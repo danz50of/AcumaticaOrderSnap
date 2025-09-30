@@ -1,4 +1,7 @@
-CREATE TABLE OrderSnapshot (
+USE Peerless_Order_History;
+GO
+
+CREATE TABLE dbo.OrderSnapshot (
     SnapshotDate DATE NOT NULL,                          -- Date of snapshot
     OrderNbr VARCHAR(20) NOT NULL,                       -- Sales order ID
     LineNbr INT NOT NULL,                                -- Line item number
@@ -13,6 +16,22 @@ CREATE TABLE OrderSnapshot (
     WarehouseID VARCHAR(20) NULL,                        -- Fulfillment location
     SalespersonID VARCHAR(20) NULL,                      -- Salesperson attribution
     OrderStatus VARCHAR(20) NOT NULL,                    -- Status (e.g., Open)
-    
-    PRIMARY KEY (SnapshotDate, OrderNbr, LineNbr)        -- Composite key for tracking
+
+    CONSTRAINT PK_OrderSnapshot PRIMARY KEY (SnapshotDate, OrderNbr, LineNbr)
 );
+
+-- For filtering by date
+CREATE NONCLUSTERED INDEX IX_OrderSnapshot_SnapshotDate
+ON dbo.OrderSnapshot (SnapshotDate);
+
+-- For filtering by customer
+CREATE NONCLUSTERED INDEX IX_OrderSnapshot_CustomerID
+ON dbo.OrderSnapshot (CustomerID);
+
+-- For filtering by status
+CREATE NONCLUSTERED INDEX IX_OrderSnapshot_OrderStatus
+ON dbo.OrderSnapshot (OrderStatus);
+
+-- For analytics by SKU
+CREATE NONCLUSTERED INDEX IX_OrderSnapshot_InventoryID
+ON dbo.OrderSnapshot (InventoryID);
