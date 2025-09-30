@@ -1,4 +1,4 @@
-# 📘 Project Summary: Sales Order Delta Tracker  9-30-2025 11:05AM
+# 📘 Project Summary: Sales Order Delta Tracker  9-30-2025 3:33PM
 **Database**: `Peerless_Order_History`  
 **Purpose**: Track daily changes in open sales orders using snapshot ingestion and delta logic.
 
@@ -36,7 +36,7 @@
 ## ⏳ Phase 4: Delta Logic & Comparison
 
 - [ ] Define delta comparison rules  
-- [ ] Build stored procedure or script to compare snapshots  
+- [X] Build stored procedure or script to compare snapshots  
 - [ ] Flag significant changes  
 - [ ] Annotate or override deltas manually  
 
