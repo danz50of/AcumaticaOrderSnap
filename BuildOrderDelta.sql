@@ -97,8 +97,52 @@ BEGIN
           AND cur.OrderNbr IS NULL;
 
         ----------------------------------------------------------------------
+        -- Insert NewLine deltas (cur exists, prev missing)
+        ----------------------------------------------------------------------
+        INSERT INTO dbo.OrderDelta (
+            SnapshotDate, OrderNbr, LineNbr,
+            DeltaOpenQty, DeltaUnitPrice, DeltaExtPrice,
+            DeltaPct, DeltaStatusChange, IsSignificant, Notes
+        )
+        SELECT
+            @SnapshotDate,
+            cur.OrderNbr,
+            cur.LineNbr,
+            cur.OpenQty,
+            cur.UnitPrice,
+            cur.ExtPrice,
+            NULL,
+            0,
+            1,
+            'NewLine'
+        FROM dbo.OrderSnapshot cur
+        LEFT JOIN dbo.OrderSnapshot prev
+          ON cur.OrderNbr = prev.OrderNbr
+         AND cur.LineNbr  = prev.LineNbr
+         AND prev.SnapshotDate = @PrevSnapshotDate
+        WHERE cur.SnapshotDate = @SnapshotDate
+          AND prev.OrderNbr IS NULL;
+
+        SET @RowCount = @RowCount + @@ROWCOUNT;
+
+        ----------------------------------------------------------------------
+        -- Update previous snapshot rows to mark as Deleted
+        ----------------------------------------------------------------------
+        
+        UPDATE s
+        SET s.Notes = 'NewLine'
+        FROM dbo.OrderSnapshot s
+        LEFT JOIN dbo.OrderSnapshot prev
+          ON s.OrderNbr = prev.OrderNbr
+         AND s.LineNbr  = prev.LineNbr
+         AND prev.SnapshotDate = @PrevSnapshotDate
+        WHERE s.SnapshotDate = @SnapshotDate
+          AND prev.OrderNbr IS NULL;
+
+        ----------------------------------------------------------------------
         -- Update log success
         ----------------------------------------------------------------------
+
         UPDATE dbo.OrderDeltaRunLog
         SET RunEndTime = SYSDATETIME(),
             RowsInserted = @RowCount,

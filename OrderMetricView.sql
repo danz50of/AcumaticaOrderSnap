@@ -25,6 +25,15 @@ Modified AS (
     WHERE Notes IN ('Modified','StatusChange','NewLine')
     GROUP BY SnapshotDate
 )
+NewOrders AS (
+    SELECT 
+        SnapshotDate,
+        SUM(DeltaExtPrice) AS NewOrderTotal,
+        COUNT(*) AS NewOrderCount
+    FROM dbo.OrderDelta
+    WHERE Notes = 'NewLine'
+    GROUP BY SnapshotDate
+)
 SELECT
     d.SnapshotDate,
     d.OpenOrderTotal AS TodayOpenOrderTotal,
