@@ -1,0 +1,63 @@
+10/2/2025
+
+**Drafting the test plan**
+
+I need to create a test plan for the 2024-10-11 snapshot that the user can follow. I'll list the test cases with order and line numbers, actions in Acumatica, expected classifications, and the expected delta of extended prices. The test plan will have cases like adding a new line, deleting lines, partial and complete fulfillments, modifying prices, and changing statuses. At the end, I'll instruct the user to update the snapshot and rerun the delta to meet their request.
+## 🧪 Test Plan for 2024-10-11 Snapshot
+
+Below is a set of test scripts to execute in Acumatica on 10-11 before you take your next snapshot. Each test will exercise one classification in your delta logic. After running these in Acumatica, load the new snapshot, rerun `PopulateOrderDelta`, and validate against the expected `OrderDelta` entries.
+
+| #  | OrderNbr-Line            | Action in Acumatica                                         | Expected Classification   | Expected `DeltaExtPrice` Calculation              |
+|----|--------------------------|-------------------------------------------------------------|---------------------------|---------------------------------------------------|
+| 1  | ED103104 – Line 1        | Add new line: Part XYZ123, Qty = 2 @ $50                   | `NewLine`                 | + (2 × $50) = +$100.00                            |
+| 2  | ED103105 – Line 1        | Delete/cancel that line                                    | `DeletedLine`             | – (2 × $119.67) = – $239.34                       |
+| 3  | ED103106 – Line 1        | Ship 3 units (OpenQty 8 → 5)                                | `FulfilledPartial`        | (5 – 8) × $74.54 = – $223.62                      |
+| 4  | ED103106 – Line 3        | Ship all units (OpenQty 3 → 0)                              | `FulfilledComplete`       | (0 – 3) × $87.16 = – $261.48                      |
+| 5  | ED103107 – Line 1        | Update UnitPrice 579 → 600                                  | `Modified`                | (1 × $600) – (1 × $579) = +$21.00                 |
+| 6  | ED103109 – Line 1        | Change OrderStatus “Credit Hold” → “Open”                  | `Modified`                | 0 (no price/qty change; flagged on status)       |
+| 7  | ED103112 – Line 7        | Change OpenQty 8 → 6 and UnitPrice 193 → 200                | `Modified`                | (6 × 200) – (8 × 193) = $1,200 – $1,544 = – $344.00 |
+| 8  | SO113700 – Line 1 (new)  | Create brand-new order/line: Part ABC, Qty = 4 @ $25        | `NewLine`                 | + (4 × $25) = +$100.00                            |
+
+---
+
+### 🔄 Execution Steps
+
+1. In Acumatica, perform each action above against the **10-10** snapshot data.  
+2. Run your snapshot extraction for **10-11**.  
+3. Execute the delta rebuild steps:  
+   ```sql
+   DELETE FROM dbo.OrderDelta   WHERE SnapshotDate = '2024-10-11';
+   DELETE FROM dbo.OrderDeltaRunLog WHERE SnapshotDate = '2024-10-11';
+   EXEC dbo.PopulateOrderDelta  @SnapshotDate = '2024-10-11', @PrevSnapshotDate = '2024-10-10';
+   ```  
+4. Validate results:  
+   ```sql
+   SELECT Notes,
+          COUNT(*)    AS RowCount,
+          SUM(DeltaExtPrice) AS TotalDelta
+   FROM dbo.OrderDelta
+   WHERE SnapshotDate = '2024-10-11'
+   GROUP BY Notes;
+   ```
+   Confirm each `Notes` bucket matches your expected counts and totals.
+
+5. Cross-check reconstructed net delta vs. open-order change:  
+   ```sql
+   SELECT 
+     d.SnapshotDate,
+     d.DiffFromYesterday,
+     del.DeletedTotal + mod.ModifiedTotal + nw.NewOrderTotal
+       + fulc.FulfilledCompleteTotal + fulp.FulfilledPartialTotal 
+       AS ReconstructedDelta
+   FROM dbo.vw_OrderMetrics d
+   LEFT JOIN (
+     SELECT SnapshotDate, SUM(DeltaExtPrice) AS DeletedTotal
+     FROM dbo.OrderDelta WHERE Notes='DeletedLine' GROUP BY SnapshotDate
+   ) del ON d.SnapshotDate = del.SnapshotDate
+   /* join modified, newlines, fulfilleds similarly */
+   WHERE d.SnapshotDate = '2024-10-11';
+   ```
+
+---
+
+Once you’ve run through this, share the validation output and we’ll iterate on any anomalies. Then we can build the line-level drill-through view for deep dives.

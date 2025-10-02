@@ -1,0 +1,49 @@
+<div style="font-family: Arial, sans-serif; max-width: 900px; margin: 20px auto; color: #333;">
+  <h2 style="color: #2c3e50; border-bottom: 2px solid #ccc; padding-bottom: 6px;">📊 Order Line Classification Grid</h2>
+
+  <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; background-color: #fafafa;">
+    <thead style="background-color: #e8f0fe;">
+      <tr>
+        <th style="text-align: left;">Condition</th>
+        <th style="text-align: left;">Classification</th>
+        <th style="text-align: left;">Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Line exists in current snapshot but not in previous</td>
+        <td><strong style="color: #2e86de;">NewLine</strong></td>
+        <td>New order line added; incoming business</td>
+      </tr>
+      <tr>
+        <td>Line exists in previous snapshot but not in current</td>
+        <td><strong style="color: #c0392b;">DeletedLine</strong></td>
+        <td>Line was removed or canceled; negative delta</td>
+      </tr>
+      <tr>
+        <td>OpenQty = 0 and prev.OpenQty &gt; 0 and no other changes</td>
+        <td><strong style="color: #27ae60;">FulfilledComplete</strong></td>
+        <td>Fully shipped; no longer open</td>
+      </tr>
+      <tr>
+        <td>OpenQty &lt; prev.OpenQty and OpenQty &gt; 0 and no other changes</td>
+        <td><strong style="color: #f39c12;">FulfilledPartial</strong></td>
+        <td>Partially shipped; still open</td>
+      </tr>
+      <tr>
+        <td>Any change to Qty, Price, Status, or other fields not covered above</td>
+        <td><strong style="color: #8e44ad;">Modified</strong></td>
+        <td>True edit to existing line</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 style="margin-top: 30px; color: #2c3e50;">🧠 Key Principles</h3>
+  <ul style="line-height: 1.6;">
+    <li><strong>Fulfillment ≠ Financial Finality:</strong> These flags track operational movement, not invoicing or revenue recognition.</li>
+    <li><strong>DeletedLine is always negative:</strong> ExtPrice, Qty, and UnitPrice are negated to reflect removal.</li>
+    <li><strong>Modified is reserved for true edits:</strong> Price changes, status updates, or quantity adjustments not caused by fulfillment.</li>
+    <li><strong>NewLine is additive:</strong> Represents growth in the order ledger.</li>
+    <li><strong>Classification is lifecycle-based:</strong> Designed for operational tracking, not financial reporting.</li>
+  </ul>
+</div>
