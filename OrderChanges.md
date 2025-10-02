@@ -18,7 +18,7 @@
 
 - [x] Build Generic Inquiry (GI) for open orders  
 - [ ] Confirm field mappings and data dictionary  
-- [ ] Export daily snapshot to CSV or direct SQL  
+- [x] Export daily snapshot to CSV or direct SQL  
 - [ ] Automate snapshot extraction (scheduled job)  
 
 ---

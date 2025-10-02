@@ -54,7 +54,7 @@
 
 ## 🏁 Next Steps
 
-- [ ] Confirm `DZ_Order_SnapShot` includes all statuses
-- [ ] Add logic to detect deleted lines (missing from snapshot)
-- [ ] Update delta comparison rules to include terminal transitions
+- [x] Confirm `DZ_Order_SnapShot` includes all statuses
+- [x] Add logic to detect deleted lines (missing from snapshot)
+- [x] Update delta comparison rules to include terminal transitions
 - [ ] Define dashboard KPIs based on lifecycle states
