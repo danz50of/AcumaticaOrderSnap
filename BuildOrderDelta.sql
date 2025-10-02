@@ -4,18 +4,16 @@
 AS
 BEGIN
     SET NOCOUNT ON;
-
     DECLARE @RunID INT, @RowCount INT = 0, @ErrorMessage NVARCHAR(4000);
 
     BEGIN TRY
-        -- Insert log start
-        INSERT INTO dbo.OrderDeltaRunLog (RunStartTime, SnapshotDate, PrevSnapshotDate, RunStatus)
-        VALUES (SYSDATETIME(), @SnapshotDate, @PrevSnapshotDate, 'Running');
-
+        -- Log start…
+        INSERT INTO dbo.OrderDeltaRunLog (...)
+        VALUES (...);
         SET @RunID = SCOPE_IDENTITY();
 
         ----------------------------------------------------------------------
-        -- Insert Modified deltas (existing lines that changed)
+        -- 1. Modified deltas (exclude Canceled so deletion wins)
         ----------------------------------------------------------------------
         INSERT INTO dbo.OrderDelta (
             SnapshotDate, OrderNbr, LineNbr,
@@ -26,11 +24,11 @@ BEGIN
             @SnapshotDate,
             cur.OrderNbr,
             cur.LineNbr,
-            cur.OpenQty - prev.OpenQty,
+            cur.OpenQty    - prev.OpenQty,
             cur.UnitPrice - prev.UnitPrice,
-            cur.ExtPrice - prev.ExtPrice,
-            CASE WHEN prev.ExtPrice <> 0
-                 THEN ((cur.ExtPrice - prev.ExtPrice) / prev.ExtPrice) * 100
+            cur.ExtPrice  - prev.ExtPrice,
+            CASE WHEN prev.ExtPrice <> 0 
+                 THEN (cur.ExtPrice - prev.ExtPrice) / prev.ExtPrice * 100 
                  ELSE NULL END,
             CASE WHEN cur.OrderStatus <> prev.OrderStatus THEN 1 ELSE 0 END,
             CASE 
@@ -41,67 +39,61 @@ BEGIN
             'Modified'
         FROM dbo.OrderSnapshot cur
         INNER JOIN dbo.OrderSnapshot prev
-            ON cur.OrderNbr = prev.OrderNbr
-           AND cur.LineNbr = prev.LineNbr
+            ON cur.OrderNbr      = prev.OrderNbr
+           AND cur.LineNbr       = prev.LineNbr
            AND prev.SnapshotDate = @PrevSnapshotDate
-        WHERE cur.SnapshotDate = @SnapshotDate
+        WHERE cur.SnapshotDate    = @SnapshotDate
+          AND cur.OrderStatus    <> 'Canceled'               -- ← exclude Canceled
           AND (
                 cur.OpenQty    <> prev.OpenQty
              OR cur.UnitPrice <> prev.UnitPrice
              OR cur.ExtPrice  <> prev.ExtPrice
              OR cur.OrderStatus <> prev.OrderStatus
           );
-
-        SET @RowCount = @RowCount + @@ROWCOUNT;
-
-        ----------------------------------------------------------------------
-        -- Insert Deleted deltas (prev exists, cur missing)
-        ----------------------------------------------------------------------
-    INSERT INTO dbo.OrderDelta (
-        SnapshotDate, OrderNbr, LineNbr,
-        DeltaOpenQty, DeltaUnitPrice, DeltaExtPrice,
-        DeltaPct, DeltaStatusChange, IsSignificant, Notes
-    )
-    SELECT
-        @SnapshotDate,
-        prev.OrderNbr,
-        prev.LineNbr,
-        -prev.OpenQty,
-        -prev.UnitPrice,
-        -prev.ExtPrice,
-        NULL,
-        CASE WHEN cur.OrderStatus = 'Canceled' THEN 1 ELSE 0 END,
-        1,
-        'DeletedLine'
-    FROM dbo.OrderSnapshot prev
-    LEFT JOIN dbo.OrderSnapshot cur
-      ON cur.OrderNbr      = prev.OrderNbr
-     AND cur.LineNbr       = prev.LineNbr
-     AND cur.SnapshotDate  = @SnapshotDate
-    WHERE prev.SnapshotDate = @PrevSnapshotDate
-      AND (
-           cur.OrderNbr IS NULL
-        OR cur.OrderStatus = 'Canceled'
-      );
-
-
-        SET @RowCount = @RowCount + @@ROWCOUNT;
+        SET @RowCount += @@ROWCOUNT;
 
         ----------------------------------------------------------------------
-        -- Update previous snapshot rows to mark as Deleted
+        -- 2. DeletedLine (missing OR Canceled)
         ----------------------------------------------------------------------
-    UPDATE s
-    SET s.Notes = 'DeletedLine'
-    FROM dbo.OrderSnapshot s
-    INNER JOIN dbo.OrderSnapshot prev
-      ON s.OrderNbr     = prev.OrderNbr
-     AND s.LineNbr      = prev.LineNbr
-     AND prev.SnapshotDate = @PrevSnapshotDate
-    WHERE s.SnapshotDate = @SnapshotDate
-      AND s.OrderStatus = 'Canceled';
+        INSERT INTO dbo.OrderDelta (
+            SnapshotDate, OrderNbr, LineNbr,
+            DeltaOpenQty, DeltaUnitPrice, DeltaExtPrice,
+            DeltaPct, DeltaStatusChange, IsSignificant, Notes
+        )
+        SELECT
+            @SnapshotDate,
+            prev.OrderNbr,
+            prev.LineNbr,
+            -prev.OpenQty,
+            -prev.UnitPrice,
+            -prev.ExtPrice,
+            NULL,
+            CASE WHEN cur.OrderStatus = 'Canceled' THEN 1 ELSE 0 END,
+            1,
+            'DeletedLine'
+        FROM dbo.OrderSnapshot prev
+        LEFT JOIN dbo.OrderSnapshot cur
+            ON cur.OrderNbr      = prev.OrderNbr
+           AND cur.LineNbr       = prev.LineNbr
+           AND cur.SnapshotDate  = @SnapshotDate
+        WHERE prev.SnapshotDate = @PrevSnapshotDate
+          AND (
+               cur.OrderNbr IS NULL
+            OR cur.OrderStatus = 'Canceled'
+          );
+        SET @RowCount += @@ROWCOUNT;
 
         ----------------------------------------------------------------------
-        -- Insert NewLine deltas (cur exists, prev missing)
+        -- 3. NewLine (as before)
+        ----------------------------------------------------------------------
+        INSERT INTO dbo.OrderDelta (...)
+        SELECT ...
+        WHERE cur.SnapshotDate = @SnapshotDate
+          AND prev.OrderNbr IS NULL;
+        SET @RowCount += @@ROWCOUNT;
+
+        ----------------------------------------------------------------------
+        -- 4a. FulfilledComplete (only when status UNCHANGED)
         ----------------------------------------------------------------------
         INSERT INTO dbo.OrderDelta (
             SnapshotDate, OrderNbr, LineNbr,
@@ -112,58 +104,8 @@ BEGIN
             @SnapshotDate,
             cur.OrderNbr,
             cur.LineNbr,
-            cur.OpenQty,
-            cur.UnitPrice,
-            cur.ExtPrice,
-            NULL,
+            cur.OpenQty - prev.OpenQty,
             0,
-            1,
-            'NewLine'
-        FROM dbo.OrderSnapshot cur
-        LEFT JOIN dbo.OrderSnapshot prev
-          ON cur.OrderNbr = prev.OrderNbr
-         AND cur.LineNbr  = prev.LineNbr
-         AND prev.SnapshotDate = @PrevSnapshotDate
-        WHERE cur.SnapshotDate = @SnapshotDate
-          AND prev.OrderNbr IS NULL;
-
-        SET @RowCount = @RowCount + @@ROWCOUNT;
-
-        ----------------------------------------------------------------------
-        -- Update previous snapshot rows to mark as Deleted
-        ----------------------------------------------------------------------
-        
-        UPDATE s
-        SET s.Notes = 'NewLine'
-        FROM dbo.OrderSnapshot s
-        LEFT JOIN dbo.OrderSnapshot prev
-          ON s.OrderNbr = prev.OrderNbr
-         AND s.LineNbr  = prev.LineNbr
-         AND prev.SnapshotDate = @PrevSnapshotDate
-        WHERE s.SnapshotDate = @SnapshotDate
-          AND prev.OrderNbr IS NULL;
-
-        ----------------------------------------------------------------------
-        -- 1. FulfilledComplete (OpenQty→0, price same)
-        ----------------------------------------------------------------------
-        INSERT INTO dbo.OrderDelta (
-            SnapshotDate,
-            OrderNbr,
-            LineNbr,
-            DeltaOpenQty,
-            DeltaUnitPrice,
-            DeltaExtPrice,
-            DeltaPct,
-            DeltaStatusChange,
-            IsSignificant,
-            Notes
-        )
-        SELECT
-            @SnapshotDate,
-            cur.OrderNbr,
-            cur.LineNbr,
-            cur.OpenQty - prev.OpenQty,                  -- negative delta
-            0,                                            -- no unit price change
             (cur.OpenQty - prev.OpenQty) * prev.UnitPrice,
             NULL,
             0,
@@ -174,26 +116,20 @@ BEGIN
             ON cur.OrderNbr      = prev.OrderNbr
            AND cur.LineNbr       = prev.LineNbr
            AND prev.SnapshotDate = @PrevSnapshotDate
-        WHERE cur.SnapshotDate  = @SnapshotDate
-          AND prev.OpenQty      > 0
-          AND cur.OpenQty       = 0
-          AND cur.UnitPrice     = prev.UnitPrice;
-
+        WHERE cur.SnapshotDate = @SnapshotDate
+          AND prev.OpenQty     > 0
+          AND cur.OpenQty      = 0
+          AND cur.UnitPrice    = prev.UnitPrice
+          AND cur.OrderStatus  = prev.OrderStatus;   -- ← guard on status
+        SET @RowCount += @@ROWCOUNT;
 
         ----------------------------------------------------------------------
-        -- 2. FulfilledPartial (OpenQty drops but stays >0, price same)
+        -- 4b. FulfilledPartial (only when status UNCHANGED)
         ----------------------------------------------------------------------
         INSERT INTO dbo.OrderDelta (
-            SnapshotDate,
-            OrderNbr,
-            LineNbr,
-            DeltaOpenQty,
-            DeltaUnitPrice,
-            DeltaExtPrice,
-            DeltaPct,
-            DeltaStatusChange,
-            IsSignificant,
-            Notes
+            SnapshotDate, OrderNbr, LineNbr,
+            DeltaOpenQty, DeltaUnitPrice, DeltaExtPrice,
+            DeltaPct, DeltaStatusChange, IsSignificant, Notes
         )
         SELECT
             @SnapshotDate,
@@ -211,93 +147,82 @@ BEGIN
             ON cur.OrderNbr      = prev.OrderNbr
            AND cur.LineNbr       = prev.LineNbr
            AND prev.SnapshotDate = @PrevSnapshotDate
-        WHERE cur.SnapshotDate  = @SnapshotDate
-          AND cur.OpenQty       < prev.OpenQty
-          AND cur.OpenQty       > 0
-          AND cur.UnitPrice     = prev.UnitPrice;
+        WHERE cur.SnapshotDate = @SnapshotDate
+          AND cur.OpenQty      < prev.OpenQty
+          AND cur.OpenQty      > 0
+          AND cur.UnitPrice    = prev.UnitPrice
+          AND cur.OrderStatus  = prev.OrderStatus;   -- ← guard on status
+        SET @RowCount += @@ROWCOUNT;
 
+        ----------------------------------------------------------------------
+        -- 5. Annotate Snapshot rows…
+        ----------------------------------------------------------------------
+        UPDATE s
+        SET s.Notes = 'DeletedLine'
+        FROM dbo.OrderSnapshot s
+        WHERE s.SnapshotDate = @SnapshotDate
+          AND s.OrderStatus  = 'Canceled';
 
+        UPDATE s
+        SET s.Notes = 'NewLine'
+        FROM dbo.OrderSnapshot s
+        WHERE s.SnapshotDate = @SnapshotDate
+          AND NOT EXISTS(
+              SELECT 1
+              FROM dbo.OrderSnapshot prev
+              WHERE prev.SnapshotDate = @PrevSnapshotDate
+                AND prev.OrderNbr = s.OrderNbr
+                AND prev.LineNbr  = s.LineNbr
+          );
 
         UPDATE s
         SET s.Notes = 'FulfilledComplete'
         FROM dbo.OrderSnapshot s
-        INNER JOIN dbo.OrderSnapshot prev
-            ON s.OrderNbr = prev.OrderNbr
-           AND s.LineNbr  = prev.LineNbr
-           AND prev.SnapshotDate = @PrevSnapshotDate
         WHERE s.SnapshotDate = @SnapshotDate
           AND s.OpenQty = 0
-          AND prev.OpenQty > 0
-          AND s.OrderQty = prev.OrderQty
-          AND s.UnitPrice = prev.UnitPrice
-          AND s.OrderStatus = prev.OrderStatus;
-
-        ----------------------------------------------------------------------
-        -- Insert FulfilledPartial (OpenQty dropped but not zero)
-        ----------------------------------------------------------------------
-        INSERT INTO dbo.OrderDelta (
-            SnapshotDate, OrderNbr, LineNbr,
-            DeltaOpenQty, DeltaUnitPrice, DeltaExtPrice,
-            DeltaPct, DeltaStatusChange, IsSignificant, Notes
-        )
-        SELECT
-            @SnapshotDate,
-            cur.OrderNbr,
-            cur.LineNbr,
-            cur.OpenQty - prev.OpenQty,
-            0,
-            (cur.OpenQty - prev.OpenQty) * cur.UnitPrice,
-            NULL,
-            0,
-            0,
-            'FulfilledPartial'
-        FROM dbo.OrderSnapshot cur
-        INNER JOIN dbo.OrderSnapshot prev
-            ON cur.OrderNbr = prev.OrderNbr
-           AND cur.LineNbr = prev.LineNbr
-           AND prev.SnapshotDate = @PrevSnapshotDate
-        WHERE cur.SnapshotDate = @SnapshotDate
-          AND cur.OpenQty > 0
-          AND cur.OpenQty < prev.OpenQty
-          AND cur.OrderQty = prev.OrderQty
-          AND cur.UnitPrice = prev.UnitPrice
-          AND cur.OrderStatus = prev.OrderStatus;
+          AND EXISTS(
+              SELECT 1
+              FROM dbo.OrderSnapshot prev
+              WHERE prev.SnapshotDate = @PrevSnapshotDate
+                AND prev.OrderNbr = s.OrderNbr
+                AND prev.LineNbr  = s.LineNbr
+                AND prev.OpenQty > 0
+                AND prev.UnitPrice = s.UnitPrice
+                AND prev.OrderStatus = s.OrderStatus
+          );
 
         UPDATE s
         SET s.Notes = 'FulfilledPartial'
         FROM dbo.OrderSnapshot s
-        INNER JOIN dbo.OrderSnapshot prev
-            ON s.OrderNbr = prev.OrderNbr
-           AND s.LineNbr  = prev.LineNbr
-           AND prev.SnapshotDate = @PrevSnapshotDate
         WHERE s.SnapshotDate = @SnapshotDate
           AND s.OpenQty > 0
-          AND s.OpenQty < prev.OpenQty
-          AND s.OrderQty = prev.OrderQty
-          AND s.UnitPrice = prev.UnitPrice
-          AND s.OrderStatus = prev.OrderStatus;
+          AND EXISTS(
+              SELECT 1
+              FROM dbo.OrderSnapshot prev
+              WHERE prev.SnapshotDate = @PrevSnapshotDate
+                AND prev.OrderNbr = s.OrderNbr
+                AND prev.LineNbr  = s.LineNbr
+                AND prev.OpenQty > s.OpenQty
+                AND prev.UnitPrice = s.UnitPrice
+                AND prev.OrderStatus = s.OrderStatus
+          );
 
         ----------------------------------------------------------------------
-        -- Update log success
+        -- Log success…
         ----------------------------------------------------------------------
-
         UPDATE dbo.OrderDeltaRunLog
-        SET RunEndTime = SYSDATETIME(),
-            RowsInserted = @RowCount,
-            RunStatus = 'Success'
-        WHERE RunID = @RunID;
-
+        SET RunEndTime  = SYSDATETIME(),
+            RowsInserted= @RowCount,
+            RunStatus   = 'Success'
+        WHERE RunID     = @RunID;
     END TRY
     BEGIN CATCH
-        SET @ErrorMessage = ERROR_MESSAGE();
-
+        -- Log failure…
         UPDATE dbo.OrderDeltaRunLog
-        SET RunEndTime = SYSDATETIME(),
-            RunStatus = 'Failed',
-            ErrorMessage = @ErrorMessage
+        SET RunEndTime   = SYSDATETIME(),
+            RunStatus    = 'Failed',
+            ErrorMessage = ERROR_MESSAGE()
         WHERE RunID = @RunID;
-
         THROW;
     END CATCH
 END;
-GO
