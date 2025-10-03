@@ -1,0 +1,47 @@
+name: OrderDelta Task
+description: Track a specific milestone or integration step for the OrderDelta dashboard
+title: "[OrderDelta] <brief task name>"
+labels: [orderdelta, dashboard, integration]
+assignees: [dan]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### 🧭 Task Overview
+        Describe the goal of this task and how it fits into the Crawl–Walk–Run roadmap.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What phase are we in? What dependencies or constraints apply?
+      placeholder: e.g. Crawl phase, API endpoint ready, testing JS fetch logic
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Plan
+      description: Steps or code modules involved
+      placeholder: e.g. Scaffold OrderDeltaController.cs, test with mock data
+    validations:
+      required: false
+
+  - type: textarea
+    id: blockers
+    attributes:
+      label: Blockers or Risks
+      description: Anything that could delay or complicate this task
+      placeholder: e.g. SQL auth issues, CORS errors, Acumatica iframe restrictions
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: phase
+    attributes:
+      label: Phase
+      options:
+        - label: Crawl
+        - label: Walk
+        - label: Run
