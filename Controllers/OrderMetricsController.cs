@@ -1,7 +1,7 @@
+using System.Collections.Generic;
+using System.Data.SqlClient;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
-using System.Data.SqlClient;
-using System.Collections.Generic;
 
 namespace AcumaticaOrderSnap.Controllers
 {
